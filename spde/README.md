@@ -45,7 +45,7 @@ container. Every script prints its own tables. Numbers below come from runs on 2
 | `champernowne_mixing.py` | Mixed (diffused) Weibull ensemble: does Champernowne fit it better than Weibull? | ~2 min |
 | `real_wind_fit.py` | Fits all families to real wind: London hourly 1998–2005 and Ireland 12 stations 1961–1978, including averaged ("mixed") series | ~3 min |
 | `real_wind_fit_ndeba.py` | As above, with the Ndeba et al. (2025) Champernowne reconstruction fitted by least squares (as in the paper) and by maximum likelihood | ~3 min |
-| `mixing_closure.py` | **New.** Ensemble-free closure for mixing via exact cumulant equations + moment matching, scored against a 100k ensemble | ~15 min |
+| `mixing_closure.py` | **New.** Ensemble-free closure for mixing via exact cumulant equations + moment matching, scored against a 100k ensemble | ~10 min |
 | `champ_lin.py`, `champ4.py` | Champernowne densities: closed-form CDF/quantile, normalisation (`python champ_lin.py` self-checks) | — |
 | `fetch_data.py` | Downloads the datasets | seconds |
 
@@ -82,7 +82,68 @@ average. Power-law-tailed Champernowne variants (log-logistic, Buch-Larsen 3p) o
 
 ### 4. Mixing closure without an ensemble (`mixing_closure.py`)
 
-Full 100k-member run in progress; results to follow in the next commit.
+Setup: 200-point periodic grid; each step advects by one cell, diffuses (ν = 0.25) and scales by a
+terrain factor a(x). The initial wind is Weibull(k₀(x), λ₀(x)), independent between grid points.
+The reference is a 100,000-member ensemble that does the same to every sample.
+
+**Closure.** The dynamics are linear, so after t steps `S(t) = P S(0)` and every marginal cumulant
+evolves exactly:
+
+```
+mean(t) = P · mean(0)            κₙ(t)ᵢ = Σⱼ Pᵢⱼⁿ κₙ(0)ⱼ      (n ≥ 2)
+```
+
+The family solve carries the fields (mean, κ₂, κ₃, κ₄). At each output time it matches the family's
+parameters to the first 2 cumulants (2-parameter families) or the first 3 (3-parameter families).
+κ₄ is never used in the fit. It is kept as an independent check of the tail.
+
+- The cumulant equations agree with the ensemble to sampling accuracy: mean 0.1%, variance 1%,
+  skewness 0.02. Cost: 7 ms for all 200 points and 4 times, plus 4 s of moment matching in total.
+- Mixing drives the distribution towards Gaussian: skewness 0.30 → 0.18 and excess kurtosis
+  0.06 → 0.02 between steps 5 and 40.
+
+Quantile error after 40 steps (fitted minus ensemble, %, mean (worst) over 40 points):
+
+| Family solve | 50th | 90th | 99th | 99.9th | Kurtosis gap |
+|---|---|---|---|---|---|
+| No closure (Weibull 2p, mixing ignored) | −6.0 (9.2) | +46.5 (52.5) | +84.2 (98.7) | +108 (130) | — |
+| Weibull 2p, matched to mean and variance | +1.8 (2.1) | −1.2 (1.4) | −5.6 (6.7) | −9.2 (10.6) | +0.45 |
+| Weibull 3p, matched to mean, variance and skewness | +0.0 (0.2) | +0.2 (0.3) | −0.7 (1.2) | −1.7 (2.3) | −0.29 |
+| **Exp-Weibull 3p**, matched to mean, variance and skewness | −0.0 (0.1) | −0.0 (0.1) | **+0.1 (0.4)** | **+0.2 (0.8)** | +0.04 |
+| Champernowne (Ndeba form), matched to mean, variance and skewness | +0.4 (0.7) | −2.3 (4.7) | +3.1 (7.2) | +11.7 (24.4) | +1.16 |
+
+The same holds at steps 5, 10 and 20. Exp-Weibull stays within 0.4% on average (1.6% worst) at
+the 99.9th percentile throughout.
+
+Closure compared with the best fit each family can achieve (maximum likelihood on the ensemble
+itself), after 40 steps, 99.9th percentile:
+
+| Family | Closure (no ensemble) | Best fit (MLE on the ensemble) |
+|---|---|---|
+| Weibull 2p | −9.2% | −6.1% |
+| Weibull 3p | −1.7% | −4.0% |
+| Exp-Weibull 3p | +0.2% | +0.2% |
+| Champernowne (Ndeba form) | +11.7% | −0.0% |
+
+What this shows:
+
+- **Mixing is closable without an ensemble.** Exact cumulant equations plus a 3-parameter family
+  match the ensemble at the 99.9th percentile. Ignoring mixing overstates it by about 100%, and
+  Weibull 2p with moment matching understates it by about 9%.
+- **Exp-Weibull is the right family here.** Its closure is as good as its best possible fit. The
+  kurtosis it implies, which the fit never uses, is within 0.04 of the truth. This agrees with the
+  real-data fits, where it was also the best family.
+- **The kurtosis gap predicts which closures will fail in the tail.** Weibull 3p is too light-tailed
+  (−0.29) and slightly under-predicts extremes. Champernowne is far too heavy (+1.16) and
+  over-predicts them.
+- **The Ndeba Champernowne cannot be closed by moments here.** On speed it is symmetric about v₀
+  apart from the cut at 0. Once the mean sits well above zero, it cannot produce the skewness of
+  0.2–0.3, so the moment match fails (residual 0.24–0.31). Its maximum-likelihood fit is excellent
+  (99.9th percentile −0.0%), so it can describe the distribution. It just cannot be reached from
+  cumulants. A Champernowne closure would need a different projection, such as matching quantiles
+  or minimising KL divergence.
+- **Weibull 3p closure beats its own maximum-likelihood fit in the tail.** Maximum likelihood weights
+  the bulk of the distribution, while the skewness match weights the tail.
 
 ## Is the approach new?
 
