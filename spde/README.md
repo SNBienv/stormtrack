@@ -75,7 +75,7 @@ average. Power-law-tailed Champernowne variants (log-logistic, Buch-Larsen 3p) o
   at 10 of 12 Irish stations, and its 99.9th percentile on London hourly is within 0.2%.
 - Weibull 2p underestimates London hourly extremes by 13% at the 99.9th percentile.
 - The classic 3-parameter Champernowne of log-speed fits badly (99.9th percentile +79% to +254%).
-- The Ndeba-form reconstruction `n / (cosh(α(v − v₀)) + λ)` fits worse than Weibull 2p by AIC on
+- The Ndeba form `n / (cosh(α(v − v₀)) + λ)` (same as Wikipedia's 4 parameters) fits worse than Weibull 2p by AIC on
   these windy, skewed sites. Fitted by maximum likelihood, it still gets the extremes to within a
   few percent. The paper's least-squares fit gives an amplitude n within 1% of the normalising
   constant.
@@ -105,9 +105,12 @@ parametrisation, and statistical-dynamical downscaling of Weibull parameters.
 
 ## Open items
 
-1. **Exact Ndeba et al. (2025) Champernowne.** nature.com and PubMed Central are blocked from the
-   container. `champ_lin.py` is a reconstruction from the parameter descriptions (n, α, λ, y₀ =
-   median). Paste the density from the paper to replace it.
+1. **Ndeba et al. (2025) Champernowne: form confirmed.** It is the same 4-parameter density as in
+   the Wikipedia article, `f(y) = n / (cosh(α(y − y₀)) + λ)`, with parameters n, α, λ, y₀.
+   `champ_lin.py` implements exactly this form on wind speed, truncated at 0. With n free, it is the
+   "Champ-Ndeba LS 4p" row of `real_wind_fit_ndeba.py`, which is the paper's least-squares fit.
+   With n fixed by normalisation, it is the "Champ-Ndeba MLE" row. The same density on log-speed is
+   the "Champernowne 3p (classic)" row of `real_wind_fit.py`.
 2. **Spatial dependence.** The mixing test starts from values that are independent between grid
    points. Real fields are correlated. Correlated mixing needs the cross-cumulants (or a copula for
    the dependence) carried alongside the marginal parameters.
