@@ -1,0 +1,37 @@
+-- check: simulated shot noise vs Gamma(m) (KS on thinned series)
+m=0.5: KS vs Gamma(m,1): D=0.0079  n=9500
+m=1.0: KS vs Gamma(m,1): D=0.0099  n=9500
+m=2.0: KS vs Gamma(m,1): D=0.0122  n=9500
+
+-- A. intrinsic only: E ~ Gamma(m), S = sqrt(2E) (Nakagami-m)
+Nakagami m=0.5                             Weib k= 1.26 | EW a= 0.53 k= 1.89 | dAIC(W-EW)=   4318.4 | KS W=0.0253 EW=0.0014 | q99.9 err W=+20.1% EW= -0.7%
+Nakagami m=0.75                            Weib k= 1.67 | EW a= 0.78 k= 1.94 | dAIC(W-EW)=    640.2 | KS W=0.0093 EW=0.0019 | q99.9 err W= +4.6% EW= -1.0%
+Nakagami m=1.0                             Weib k= 1.99 | EW a= 1.01 k= 1.99 | dAIC(W-EW)=     -1.7 | KS W=0.0015 EW=0.0013 | q99.9 err W= -0.8% EW= -0.7%
+Nakagami m=1.5                             Weib k= 2.53 | EW a= 1.39 k= 2.12 | dAIC(W-EW)=   1003.2 | KS W=0.0119 EW=0.0011 | q99.9 err W= -4.6% EW= -0.2%
+Nakagami m=2.0                             Weib k= 2.97 | EW a= 1.76 k= 2.22 | dAIC(W-EW)=   2741.9 | KS W=0.0191 EW=0.0012 | q99.9 err W= -5.4% EW= +0.9%
+Nakagami m=3.0                             Weib k= 3.66 | EW a= 2.34 k= 2.41 | dAIC(W-EW)=   5743.1 | KS W=0.0277 EW=0.0019 | q99.9 err W= -6.6% EW= +0.7%
+Nakagami m=5.0                             Weib k= 4.74 | EW a= 3.16 k= 2.77 | dAIC(W-EW)=   9557.3 | KS W=0.0340 EW=0.0023 | q99.9 err W= -7.1% EW= +0.2%
+
+-- B. intrinsic (m=1 bursts) x extrinsic slow modulation of burst SIZE beta ~ Gamma(nu)
+m=1, beta~Gamma(nu=1)  (K-distribution)    Weib k= 1.32 | EW a= 1.66 k= 1.01 | dAIC(W-EW)=   2220.2 | KS W=0.0175 EW=0.0022 | q99.9 err W=-11.0% EW= +1.4%
+m=1, beta~Gamma(nu=2)  (K-distribution)    Weib k= 1.58 | EW a= 1.72 k= 1.19 | dAIC(W-EW)=   2602.8 | KS W=0.0186 EW=0.0014 | q99.9 err W=-10.6% EW= +0.4%
+m=1, beta~Gamma(nu=4)  (K-distribution)    Weib k= 1.76 | EW a= 1.49 k= 1.43 | dAIC(W-EW)=   1480.8 | KS W=0.0146 EW=0.0027 | q99.9 err W= -9.5% EW= -2.3%
+m=1, beta~Gamma(nu=8)  (K-distribution)    Weib k= 1.86 | EW a= 1.29 k= 1.62 | dAIC(W-EW)=    634.1 | KS W=0.0095 EW=0.0030 | q99.9 err W= -6.6% EW= -2.1%
+m=1, beta~Gamma(nu=16)  (K-distribution)   Weib k= 1.93 | EW a= 1.16 k= 1.78 | dAIC(W-EW)=    213.7 | KS W=0.0060 EW=0.0017 | q99.9 err W= -4.7% EW= -2.1%
+
+-- C. intrinsic (m=2) x extrinsic lognormal modulation of mean energy, sigma
+m=2, ln beta ~ N(0,0.2^2)                  Weib k= 2.83 | EW a= 2.00 k= 1.99 | dAIC(W-EW)=   4058.2 | KS W=0.0226 EW=0.0012 | q99.9 err W= -8.3% EW= -0.6%
+m=2, ln beta ~ N(0,0.4^2)                  Weib k= 2.51 | EW a= 2.80 k= 1.54 | dAIC(W-EW)=   8371.9 | KS W=0.0321 EW=0.0027 | q99.9 err W=-13.8% EW= -2.1%
+m=2, ln beta ~ N(0,0.6^2)                  Weib k= 2.17 | EW a= 4.09 k= 1.16 | dAIC(W-EW)=  14220.2 | KS W=0.0427 EW=0.0031 | q99.9 err W=-19.3% EW= -2.7%
+
+-- D. extrinsic modulation of burst RATE: m ~ Gamma-distributed around m0 (beta fixed)
+m ~ Gamma(mean 1, cv 0.5)                  Weib k= 1.53 | EW a= 0.40 k= 2.81 | dAIC(W-EW)=  12105.8 | KS W=0.0420 EW=0.0238 | q99.9 err W=+20.1% EW= -4.4%
+m ~ Gamma(mean 2, cv 0.5)                  Weib k= 2.21 | EW a= 0.63 k= 2.92 | dAIC(W-EW)=   2739.9 | KS W=0.0205 EW=0.0152 | q99.9 err W= +3.9% EW= -3.7%
+m ~ Gamma(mean 2, cv 1.0)                  Weib k= 0.66 | EW a= 0.23 k= 2.00 | dAIC(W-EW)= 109597.3 | KS W=0.2084 EW=0.2282 | q99.9 err W=+372.8% EW=+37.7%
+
+-- E. 'mast' block average: S(t)=sqrt(2E(t)) shot noise m=1, averaged over T (units of 1/gamma)
+m=1 block mean T=1/gamma (n=100000)        Weib k= 2.28 | EW a= 0.93 k= 2.37 | dAIC(W-EW)=     23.6 | KS W=0.0042 EW=0.0041 | q99.9 err W= +0.4% EW= -0.7%
+m=1 block mean T=5/gamma (n=20000)         Weib k= 3.42 | EW a= 1.20 k= 3.11 | dAIC(W-EW)=     32.0 | KS W=0.0118 EW=0.0076 | q99.9 err W= -3.0% EW= -1.2%
+m=1 block mean T=20/gamma (n=5000)         Weib k= 6.18 | EW a= 2.55 k= 3.94 | dAIC(W-EW)=    177.1 | KS W=0.0339 EW=0.0086 | q99.9 err W= -6.8% EW= -2.3%
+m=1 block MAX (gust) T=5/gamma (n=20000)   Weib k= 3.95 | EW a= 1.67 k= 3.04 | dAIC(W-EW)=    266.8 | KS W=0.0221 EW=0.0069 | q99.9 err W= -6.7% EW= -2.6%
+m=1 block MAX (gust) T=20/gamma (n=5000)   Weib k= 6.15 | EW a= 6.70 k= 2.84 | dAIC(W-EW)=    601.7 | KS W=0.0580 EW=0.0154 | q99.9 err W=-11.1% EW= -3.8%

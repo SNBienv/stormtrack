@@ -1,0 +1,2 @@
+J=  16  P0: tot=4.114 int=3.296 ext=0.818  P1: tot=3.974 int=3.271 ext=0.703  P2: tot=3.570 int=3.246 ext=0.325
+J=  64  P0: tot=3.373 int=0.722 ext=2.652  P1: tot=3.213 int=0.719 ext=2.494  P2: tot=2.832 int=0.717 ext=2.115

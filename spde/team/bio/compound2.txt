@@ -1,0 +1,1 @@
+python: can't open file '/tmp/claude-0/-home-user-stormtrack/50f5e01c-d517-5e91-9b71-179b6251c199/scratchpad/agents/bio/compound2.py': [Errno 2] No such file or directory
