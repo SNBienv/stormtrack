@@ -47,6 +47,8 @@ container. Every script prints its own tables. Numbers below come from runs on 2
 | `real_wind_fit_ndeba.py` | As above, with the Ndeba et al. (2025) Champernowne reconstruction fitted by least squares (as in the paper) and by maximum likelihood | ~3 min |
 | `mixing_closure.py` | Ensemble-free closure for mixing via exact cumulant equations + moment matching, scored against a 100k ensemble | ~10 min |
 | `rectification.py` | Speed bias from a zero-mean unresolved vector (Rice); London demo | seconds |
+| `rice_family_ns2d.py` | Rice vector family solve on deterministic 2-D Navier–Stokes, smooth/rough regimes | ~15 / 40 min |
+| `singular.py` | Cyclone as a tracked singular component (Holland + centre-error Rice mixture), strip-width flag | ~1 min |
 | `rice_closure.py` | Calibration of the Rice law (unresolved part as a Gaussian vector) on London | ~3 min |
 | `team/` | Five specialist reports and their scripts | — |
 | `l96_intrinsic.py` | Deterministic two-scale Lorenz-96: the measured unresolved term vs deterministic and Gaussian closures | ~7 min |
@@ -297,6 +299,62 @@ biologist, Ramanujan and a singularity-tracking astrophysicist. Their reports an
   1-min record and splits the WRF MSE into floor and excess. `mast_wrf/rectification_budget.py`
   predicts the speed bias from the unresolved variance, out of sample. Several masts inside one
   WRF cell would give the true dual reporter.
+
+### 8. Rice vector family solve on deterministic 2-D Navier–Stokes (`rice_family_ns2d.py`)
+
+**Truth.** 2-D Navier–Stokes (pseudo-spectral, 256²) with steady Kolmogorov forcing. Nothing is random.
+
+**The coarse model plays WRF.** It carries the resolved cell wind V̄ and a derived unresolved spread σ². The point speed in each cell is then Rice(|V̄|, σ).
+
+σ² comes from two places, neither tuned:
+
+- **Sub-cell spread.** The exact leading term of what a cell average hides is c·(Δ²/24)|∇V̄|². The coefficient c comes from the resolved field itself (Germano's dynamic procedure): at the test scale 2Δ the answer is resolved.
+- **Error of the resolved state.** It is measured on a separate training period, as a regression of the true cell wind on the forecast towards climatology, plus the residual variance. Long-lead error is chaos of the resolved scales, not isotropic noise.
+
+Scored on an independent test period against the true point speeds inside every cell. **Smooth regime** (forcing resolved, spectral slope −4.3, 8×8-point cells):
+
+| Lead | Model | KS | Coverage 90% | Above q99 | CRPS | Bias |
+|---|---|---|---|---|---|---|
+| 0 | Deterministic \|V̄\| | — | — | — | 0.1235 | +0.014 |
+| 0 | Injected, uniform σ (same total variance) | 0.050 | 0.906 | 0.019 | 0.0915 | −0.001 |
+| 0 | Derived, Taylor term only | 0.050 | 0.820 | 0.030 | 0.0878 | +0.003 |
+| 0 | **Derived family (dynamic c + regression)** | **0.030** | 0.919 | **0.008** | **0.0873** | −0.006 |
+| 0 | Oracle (true sub-cell variance) | 0.038 | 0.852 | 0.013 | 0.0872 | +0.000 |
+| 1 | Injected, uniform σ | 0.051 | 0.901 | 0.016 | 0.1318 | −0.013 |
+| 1 | Derived family | 0.033 | 0.922 | 0.008 | 0.1283 | −0.002 |
+| 4 | Injected, uniform σ | 0.150 | 0.919 | 0.004 | 0.3154 | **−0.181** |
+| 4 | Derived family | **0.058** | 0.926 | 0.007 | **0.2978** | +0.036 |
+
+- **The derived σ tracks the truth cell by cell** (correlation 0.957). The Taylor term alone catches 75% of the variance; the dynamic coefficient gives 110%.
+- **At lead 0 the derived family matches the oracle.** CRPS is 0.0873 against the oracle's 0.0872 and 30% below deterministic. Its tails are better calibrated than with uniform injected noise (>q99 0.008 against 0.019).
+- **At long leads, isotropic error inflates the speeds.** Adding error variance around the forecast raises the Rice mean by 0.18. Regression to climatology removes that bias and gives the best calibration and CRPS.
+- **Rough regime:** the forcing is inside the cells, so the energy is injected at unresolved scales. Results are pending (`python rice_family_ns2d.py --regime rough`).
+
+### 9. Cyclones and extreme events as singularities (`singular.py`)
+
+A cyclone is a moving near-singularity of the wind field. At a mast it produces a hard edge at Vmax with a (Vmax−V)^−½ caustic (`team/astro`). A family solve on a model grid smooths it into the cell. The singular part is therefore **tracked, not closed**.
+
+**How the mast law is built:**
+
+- stormtrack supplies the centre, motion, depth and vmax.
+- Holland B = ρe·Vmax²/Δp; Rm from Willoughby et al. (2006) unless measured.
+- The mast speed law is a mixture of Rice laws over the centre error (2-D Gauss–Hermite), plus the unresolved gusts. The caustic, eye and tails come out of the geometry.
+- `from_track(row, mast_lat, mast_lon)` builds the law from a stormtrack row.
+
+**Test.** 600 synthetic passages of a Holland storm (Vmax 50 m/s, depth 60 hPa, Rm 30 km), with the true miss distance uniform in ±80 km. Forecasts see a 20 km centre error; the model cell is 27 km. The event is the mast exceeding the threshold at least once during the passage.
+
+| Threshold | Observed frequency | Family on cell-averaged field: mean p / Brier skill | **Singular component: mean p / Brier skill** |
+|---|---|---|---|
+| 45 m/s | 0.902 | 0.908 / 0.05 | 0.792 / −0.07 |
+| 50 m/s | 0.632 | 0.782 / 0.25 | **0.609 / 0.48** |
+| 55 m/s | 0.320 | 0.649 / −0.48 | **0.316 / 0.28** |
+| 60 m/s | 0.012 | 0.474 / **−31.8** (294 false alarms) | **0.008 / 0.01** (0 false alarms) |
+
+- **Treating the singularity as noise invents extremes.** The family turns the vortex's deterministic internal structure into random spread, so it forecasts P(>60 m/s) = 0.47 for winds that occur 1% of the time.
+- **The tracked singular component is reliable where extremes matter.**
+- **Known weak spot.** At 45 m/s it under-forecasts, because the centre-error mixture puts weight outside the ±80 km range the storms were drawn from. The fix is to truncate the centre-error posterior to the track climatology.
+
+**The singularity flag.** `strip_width()` fits the Sulem–Sulem–Frisch analyticity-strip width δ (it recovers d = 10.0 and 25.1 for 1/(x²+d²)). With k_c = π/cell, it gives δ = 6.6 km and 11.5 km on transects 10 and 25 km from the eye (singular, δk_c < 3). A transect 50 km out and a smooth ambient field read as smooth.
 
 ## Is the approach new?
 
