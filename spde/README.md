@@ -328,7 +328,31 @@ Scored on an independent test period against the true point speeds inside every 
 - **The derived σ tracks the truth cell by cell** (correlation 0.957). The Taylor term alone catches 75% of the variance; the dynamic coefficient gives 110%.
 - **At lead 0 the derived family matches the oracle.** CRPS is 0.0873 against the oracle's 0.0872 and 30% below deterministic. Its tails are better calibrated than with uniform injected noise (>q99 0.008 against 0.019).
 - **At long leads, isotropic error inflates the speeds.** Adding error variance around the forecast raises the Rice mean by 0.18. Regression to climatology removes that bias and gives the best calibration and CRPS.
-- **Rough regime:** the forcing is inside the cells, so the energy is injected at unresolved scales. Results are pending (`python rice_family_ns2d.py --regime rough`).
+**Rough regime.** The forcing is at k = 40, inside the 8×8-point cells, so energy enters at unresolved scales. The resolved-band spectral slope is −1.8. Here the resolved-only closure is blind:
+
+- The Taylor term catches 15% of the sub-cell variance (correlation 0.38).
+- The dynamic coefficient reaches 79%: scale similarity breaks at the forcing scale.
+
+The unresolved energy is source-fed and spatially uniform, so a **measured** uniform σ (the training mean, i.e. what a mast gives) is the right law at short leads.
+
+| Lead | Model | KS | Coverage 90% | CRPS | Bias |
+|---|---|---|---|---|---|
+| 0 | Measured, uniform σ | **0.019** | 0.899 | 0.4273 | +0.022 |
+| 0 | Derived family | 0.112 | 0.779 | 0.4421 | +0.123 |
+| 0 | Derived + measured floor | 0.061 | 0.842 | 0.4323 | +0.080 |
+| 0 | Oracle sub-cell | 0.057 | 0.857 | 0.4165 | +0.049 |
+| 4 | Measured, uniform σ | 0.177 | 0.918 | 0.7182 | **−0.591** |
+| 4 | Derived family | 0.087 | 0.886 | **0.6277** | +0.220 |
+| 4 | Derived + measured floor | **0.071** | 0.894 | 0.6359 | +0.174 |
+
+**Two kinds of S−.**
+
+- **Cascade-fed** (the smooth regime): it is derivable from the resolved field.
+- **Source-fed** (the rough regime): energy enters below the grid, so S− must be measured, or needs the physics of the source.
+
+A real atmosphere has both: the cascade from resolved shear, plus sub-grid sources such as convection, surface heating, roughness and terrain. That argues for σ² = (derived from the resolved field) + (measured, or from a parametrised source term). At long leads, regression of the resolved state towards climatology matters in both regimes; isotropic error variance alone biases the speeds by −0.2 to −0.6.
+
+A bug found on the way: a forcing below the coarse grid's resolution must be *absent* from the coarse model. Sampling cos(40y) on 32 points aliases it to a resolved cos(8y), which drove the coarse model to blow-up.
 
 ### 9. Cyclones and extreme events as singularities (`singular.py`)
 

@@ -30,9 +30,12 @@ sigma^2 has two parts, both derived from the system itself:
 Scored on an independent TEST period against the true point speeds inside every cell:
   deterministic        speed = |V_res|                         (a point mass, no S-)
   injected, uniform    Rice(|V_res|, sigma_c(t)), sigma_c(t) the domain mean of the same total
-                       variance: right amount of noise, but not state-dependent
+                       variance, measured on the training period: right amount, not state-dependent
   derived, Taylor      Rice(|V_res|, sqrt(sigma_sub^2 (c_dyn = 1) + raw error variance(t)))
   derived (family)     Rice(|a V_res + (1-a) V_clim|, sqrt(c_dyn sigma_sub^2 + sigma_err^2(t)))
+  derived + floor      derived family plus a uniform floor for what the derivation misses,
+                       measured on the training period (true minus derived sub-cell variance):
+                       the role of a mast when energy enters below the grid
   oracle sub-cell      Rice with the TRUE sub-cell variance of each cell (lead 0 only)
 
 Regimes (--regime):
@@ -76,7 +79,10 @@ class Spectral:
         self.mask = (np.abs(self.KX) < n / 3) & (np.abs(self.KY) < n / 3)
         y = np.arange(n) * L / n
         Y = np.meshgrid(y, y)[1]
-        self.fw = np.fft.rfft2(-NF * F0 * np.cos(NF * Y)) * self.mask
+        # the forcing exists on this grid only if it is resolved; sampling cos(NF y) on a coarser
+        # grid would alias it onto a resolved wavenumber (40 on 32 points -> 8)
+        resolved = NF < n / 3
+        self.fw = np.fft.rfft2(-NF * F0 * np.cos(NF * Y)) * self.mask if resolved else np.zeros_like(self.K2, complex)
         self.lin = nu * self.K2 + hyper * self.K2 ** 4
 
     def vel(self, wh):
@@ -250,6 +256,9 @@ print(f"domain mean: true {true_sub.mean():.4f}, Taylor D^2/24|grad V|^2 {pred_s
 print(f"dynamic coefficient from the resolved field: c_dyn = {np.mean(cdyn):.2f} (range {min(cdyn):.2f}-{max(cdyn):.2f})"
       f" -> derived/true ratio {np.mean(cdyn) * pred_sub.mean() / true_sub.mean():.2f} (needed: "
       f"{true_sub.mean() / pred_sub.mean():.2f})")
+# what the derivation misses, measured on the training period (the role of a mast): uniform floor
+floor_sub = float(max(true_sub.mean() - np.mean(cdyn) * pred_sub.mean(), 0.0))
+print(f"measured floor (true minus derived sub-cell variance, training mean): {floor_sub:.4f}")
 print("resolved-wind error per component (training), by lead: regression slope a, residual variance"
       " (raw variance without the regression)")
 print("   " + "  ".join(f"{L_:g}: a={reg_a[L_]:.2f} {sig_err2[L_]:.4f} ({sig_err2_raw[L_]:.4f})" for L_ in LEADS))
@@ -270,7 +279,8 @@ def score(speeds, nu, sig, n_crps=16, m_draws=48):
 
 
 rows = {}
-models = ("deterministic", "injected, uniform", "derived, Taylor", "derived (family)", "oracle sub-cell")
+models = ("deterministic", "injected, uniform", "derived, Taylor", "derived (family)", "derived + measured floor",
+          "oracle sub-cell")
 for L_ in LEADS:
     acc = {m: dict(pit=[], crps=[], bias=[], gap=[]) for m in models}
     for s in range(N_TRAIN, N_TRAIN + N_TEST):
@@ -288,8 +298,9 @@ for L_ in LEADS:
         s_tay = np.sqrt(s_sub + sig_err2_raw[L_])
         s_der = np.sqrt(cd * s_sub + sig_err2[L_])
         s_uni = np.full_like(nu, np.sqrt(true_sub.mean() + sig_err2_raw[L_]))
+        s_hyb = np.sqrt(cd * s_sub + floor_sub + sig_err2[L_])
         cand = {"injected, uniform": (nu, s_uni), "derived, Taylor": (nu, s_tay),
-                "derived (family)": (nu_reg, s_der)}
+                "derived (family)": (nu_reg, s_der), "derived + measured floor": (nu_reg, s_hyb)}
         if L_ == 0.0:
             dtu = cells_points(ut) - block(ut).reshape(-1, 1)
             dtv = cells_points(vt) - block(vt).reshape(-1, 1)
