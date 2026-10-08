@@ -45,7 +45,10 @@ container. Every script prints its own tables. Numbers below come from runs on 2
 | `champernowne_mixing.py` | Mixed (diffused) Weibull ensemble: does Champernowne fit it better than Weibull? | ~2 min |
 | `real_wind_fit.py` | Fits all families to real wind: London hourly 1998–2005 and Ireland 12 stations 1961–1978, including averaged ("mixed") series | ~3 min |
 | `real_wind_fit_ndeba.py` | As above, with the Ndeba et al. (2025) Champernowne reconstruction fitted by least squares (as in the paper) and by maximum likelihood | ~3 min |
-| `mixing_closure.py` | **New.** Ensemble-free closure for mixing via exact cumulant equations + moment matching, scored against a 100k ensemble | ~10 min |
+| `mixing_closure.py` | Ensemble-free closure for mixing via exact cumulant equations + moment matching, scored against a 100k ensemble | ~10 min |
+| `rectification.py` | Speed bias from a zero-mean unresolved vector (Rice); London demo | seconds |
+| `l96_intrinsic.py` | Deterministic two-scale Lorenz-96: the measured unresolved term vs deterministic and Gaussian closures | ~7 min |
+| `mast_wrf/` | GEP mast / WRF measurement modules (from the user's ns2d session) + `rectification_budget.py` | user's data |
 | `champ_lin.py`, `champ4.py` | Champernowne densities: closed-form CDF/quantile, normalisation (`python champ_lin.py` self-checks) | — |
 | `fetch_data.py` | Downloads the datasets | seconds |
 
@@ -144,6 +147,65 @@ What this shows:
   or minimising KL divergence.
 - **Weibull 3p closure beats its own maximum-likelihood fit in the tail.** Maximum likelihood weights
   the bulk of the distribution, while the skewness match weights the tail.
+
+### 5. The noise is the unresolved part of the system, not something injected
+
+The project axiom: the "noise" is whatever the model cannot resolve or measure. It is part of the
+system, so it has to be measured or derived, never added from outside.
+
+**Rectification: how a zero-mean unresolved part creates a speed bias** (`rectification.py`). A
+model holds the resolved vector V. A cup measures `|V + v′|`. Speed is convex in the components,
+so `E|V + v′| ≈ |V| + σ²_cross / (2|V|)`, exactly the Rice mean for isotropic Gaussian v′. A model
+that is perfect for the resolved vector therefore reads low. London hourly data, with "resolved"
+meaning the vector mean over a window:
+
+| Window | Actual gap (mean speed − resolved) | Predicted from the unresolved variance only | Explained | r per window |
+|---|---|---|---|---|
+| 3 h | 0.101 m/s | 0.092 | 91% | 0.995 |
+| 6 h | 0.186 | 0.170 | 92% | 0.990 |
+| 12 h | 0.316 | 0.296 | 94% | 0.987 |
+| 24 h | 0.511 (11% of the mean) | 0.475 | 93% | 0.989 |
+
+With |V| → 0 the Rice law becomes Rayleigh, which is Weibull with k = 2. The Weibull family for
+speed is what an unresolved isotropic vector looks like. `mast_wrf/rectification_budget.py`
+applies this to the GEP mast and WRF U10/V10. The unresolved v′ is the mast's 1-min deviation
+inside each hour; by Taylor's hypothesis, 1 h × 5.5 m/s ≈ 20 km ≈ 7 Δx. The script predicts the
+WRF speed bias out of sample, with no tuning. It must be run on the user's machine, where the
+data are.
+
+**A fully deterministic test system** (`l96_intrinsic.py`). Two-scale Lorenz-96 (K = 8 resolved X,
+32 fast Y per X, F = 20, b = c = 10). Nothing in it is random. The coarse model's missing term is
+the sub-grid tendency U = −(hc/b) ΣY. Its conditional law given X and its memory are measured on
+a training truth (7.7 M samples) and then scored on an independent truth.
+
+What the unresolved part looks like:
+
+- non-Gaussian: skewness −0.39, excess kurtosis +0.58;
+- state-dependent: its sd varies by a factor of 1.6 across X, and its skewness from −0.81 to +0.17;
+- oscillating memory: the autocorrelation is +0.98 at lag 0.005, +0.37 at 0.05, −0.14 at 0.15.
+
+The lag-1 fit implies 0.28 time units of memory. The Green–Kubo integral time is only 0.042.
+
+| Coarse model | Climate mean (truth 3.771) | Hellinger | RMSE at 1.0 | CRPS at 1.0 | Spread/error at 1.0 |
+|---|---|---|---|---|---|
+| C0: no sub-grid term | 3.340 | 0.201 | 8.67 | 7.02 | — |
+| C1: E[U\|X] only (deterministic, unbiased at every state) | 3.597 | 0.028 | 2.26 | 1.53 | — |
+| C2: C1 + Gaussian AR(1), measured variance and Green–Kubo memory | 3.703 | 0.024 | 2.06 | 1.05 | 1.02 |
+| **C3: C1 + measured conditional residual, Green–Kubo memory** | **3.704** | **0.020** | **1.84** | **0.91** | **1.08** |
+| C3 with lag-1 memory | 3.709 | 0.027 | 2.02 | 1.04 | 1.36 |
+
+- **The bias comes from the missing S−.** C1's sub-grid term is exactly right on average at every
+  state, yet its climate is 0.17 too low. Putting the zero-mean unresolved part back (C2, C3)
+  removes about 60% of that bias. The nonlinear dynamics rectify the fluctuations into a mean
+  shift, the same mechanism as the speed bias above.
+- **The true law of the unresolved part matters.** The measured, state-dependent, non-Gaussian
+  residual (C3) beats a Gaussian with the same variance and memory (C2) at every lead. At lead
+  1.0, RMSE is 11% lower and CRPS 13% lower. Against the best deterministic closure (C1), RMSE is
+  19% lower and CRPS 41% lower.
+- **Memory must be the Green–Kubo integral time, not the lag-1 correlation.** With lag-1 memory the
+  ensemble is too wide (spread/error 1.4–1.7 at short leads) and loses most of C3's advantage.
+  With Green–Kubo memory the spread/error ratio is 1.00–1.11.
+- **Every number in C3 is measured on the system itself.** There is no tuning parameter.
 
 ## Is the approach new?
 
