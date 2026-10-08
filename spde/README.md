@@ -47,6 +47,8 @@ container. Every script prints its own tables. Numbers below come from runs on 2
 | `real_wind_fit_ndeba.py` | As above, with the Ndeba et al. (2025) Champernowne reconstruction fitted by least squares (as in the paper) and by maximum likelihood | ~3 min |
 | `mixing_closure.py` | Ensemble-free closure for mixing via exact cumulant equations + moment matching, scored against a 100k ensemble | ~10 min |
 | `rectification.py` | Speed bias from a zero-mean unresolved vector (Rice); London demo | seconds |
+| `rice_closure.py` | Calibration of the Rice law (unresolved part as a Gaussian vector) on London | ~3 min |
+| `team/` | Five specialist reports and their scripts | — |
 | `l96_intrinsic.py` | Deterministic two-scale Lorenz-96: the measured unresolved term vs deterministic and Gaussian closures | ~7 min |
 | `mast_wrf/` | GEP mast / WRF measurement modules (from the user's ns2d session) + `rectification_budget.py` | user's data |
 | `champ_lin.py`, `champ4.py` | Champernowne densities: closed-form CDF/quantile, normalisation (`python champ_lin.py` self-checks) | — |
@@ -84,6 +86,20 @@ average. Power-law-tailed Champernowne variants (log-logistic, Buch-Larsen 3p) o
   constant.
 
 ### 4. Mixing closure without an ensemble (`mixing_closure.py`)
+
+> **Correction (team review, `team/ramanujan`, `team/fields`).** A 100,000-member ensemble is
+> itself off by up to about 1% at the 99.9th percentile, so the ensemble-based errors below are
+> noise-limited. Against an *exact* reference (Gil-Pelaez inversion, or FFT convolution), the
+> exp-Weibull closure has a **systematic over-prediction** at 99.9%: +0.41% at 5 steps, falling to
+> +0.11% at 40 steps. In the deeper tail it under-predicts (−2% at an exceedance probability of
+> 1e−9), because its tail exponent is wrong: 3–4, against the true ≈ 1.7.
+>
+> Two exact upgrades already exist, both using the cumulants this script tracks:
+> - Cornish–Fisher with κ₄: −0.03% error;
+> - the saddlepoint (Lugannani–Rice) on the exact cumulant generating function: about 0.001%, at
+>   27 ms per point.
+>
+> The conclusions below about which family is best still hold. For extremes, use the saddlepoint.
 
 Setup: 200-point periodic grid; each step advects by one cell, diffuses (ν = 0.25) and scales by a
 terrain factor a(x). The initial wind is Weibull(k₀(x), λ₀(x)), independent between grid points.
@@ -207,6 +223,81 @@ The lag-1 fit implies 0.28 time units of memory. The Green–Kubo integral time 
   With Green–Kubo memory the spread/error ratio is 1.00–1.11.
 - **Every number in C3 is measured on the system itself.** There is no tuning parameter.
 
+### 6. Rice: the unresolved part as a Gaussian vector (`rice_closure.py`)
+
+Feller's theorem rules out closing the mixing of wind *speed* within any non-Gaussian family. The
+structural fix (`team/fields`) is to evolve the vector: V = V_res + v′ with v′ ~ N(0, σ²I). The
+speed is then exactly **Rice(|V_res|, σ)**, which is closed under mixing plus intrinsic noise and
+reduces to Weibull k = 2 at zero mean. It is the same law that explained 91–94% of the London
+speed bias in section 5.
+
+Calibration test on London hourly speeds, given each window's resolved vector. A calibrated law
+gives 0.90 coverage of the central 90% and 0.010 exceedance above q99:
+
+| Window | Model | KS | Coverage 90% | Above q99 | CRPS | Calm windows (ν < 2σ): KS / above q99 |
+|---|---|---|---|---|---|---|
+| 12 h | Rice, oracle σ | 0.018 | 0.924 | 0.006 | 0.610 | 0.073 / 0.005 |
+| 12 h | Rice, σ predicted from \|V_res\| | 0.041 | 0.905 | 0.024 | 0.651 | 0.077 / 0.032 |
+| 12 h | **Rice, compound σ** (log σ scatter) | 0.027 | 0.939 | **0.004** | 0.651 | **0.059 / 0.004** |
+| 12 h | Gaussian on speed (Rice mean and sd) | 0.037 | 0.903 | 0.026 | 0.651 | 0.068 / 0.042 |
+| 12 h | Gaussian centred on \|V_res\| ("injected") | 0.109 | 0.885 | 0.039 | 0.682 | 0.241 / 0.085 |
+
+The 3, 6 and 24 h windows behave the same way; run the script for all of them.
+
+- **Injected noise centred on the resolved speed is the worst everywhere.** Its CRPS is 5–8% higher
+  and calm windows exceed q99 8–19 times too often, because it misses the rectification.
+- **Most of Rice's gain is the rectified mean.** With the same mean and spread, a Gaussian on speed
+  scores the same CRPS. The Rice shape helps only in calm windows.
+- **σ itself is a fluctuating unresolved quantity** (superstatistics, `team/bio`). With σ predicted
+  from |V_res| alone, q99 is exceeded 2.4 times too often. Mixing over the measured scatter of
+  log σ fixes the tail (0.3–0.6%), but the result is slightly too wide (central coverage
+  0.93–0.96).
+
+### 7. Team synthesis: what is established, and what the residual RMSE is
+
+Five specialist agents worked on this independently: a mathematician, a quantum physicist, a
+biologist, Ramanujan and a singularity-tracking astrophysicist. Their reports and scripts are in
+`team/*/REPORT.md`. Where they agree:
+
+1. **The axiom is a theorem.** By Mori–Zwanzig, the missing term of a coarse model is
+   F(t) = e^{tQL}QLx, a deterministic function of the unmeasured fine-scale state. It looks
+   random only because that state is not measured. Its memory kernel follows from it through
+   fluctuation–dissipation. With chaotic fast scales it converges to a diffusion whose amplitude
+   is given by Green–Kubo (references in `team/fields`).
+2. **Checked on deterministic L96** (`l96_intrinsic.py`, `team/quantum`, `team/fields`):
+   - Einstein / Green–Kubo friction holds within 6–23% when the fast part is chaotic, and fails
+     when it is periodic.
+   - Green–Kubo predicts the deterministic model's error growth within 4% up to lead 0.1.
+   - The 1/c law holds.
+   - The measured intrinsic residual removes 60–80% of the climate bias and gives reliable
+     ensembles. It has to use the Green–Kubo memory time, not the lag-1 correlation.
+3. **Bias from a zero-mean unresolved part is real, but it needs a nonlinearity.** Speed
+   rectification explains 91–94% of the London coarse-graining speed gap. In L96 the nonlinear
+   dynamics turn the missing term into a climate-mean bias.
+4. **Distribution families have a physical meaning:**
+   - Weibull k = 2 (Rayleigh) is an unresolved isotropic vector.
+   - Exp-Weibull's a is the number of independent eddies or bursts sampled (Nakagami-m /
+     max-of-a). The London fits have the "a > 1, k < 2" signature of a fluctuating energy scale.
+5. **Where the families stop working:**
+   - Mixing of speed (Feller): use Rice on the vector, or a saddlepoint for extremes.
+   - Fronts: the spectral strip width δ flags them about 0.3 time units ahead, and the one-point
+     goodness of fit is blind to them.
+   - A cyclone passing a mast gives a hard edge at Vmax with a (Vmax−V)^−½ spike. That needs a
+     mixture whose vortex component is fed by stormtrack's tracked centre (`team/astro`).
+
+**Scorecard on "the residual RMSE between WRF and the masts is exactly the missing S−":**
+
+- **Supported:** S− exists, it can be derived and measured rather than injected, and it creates
+  mean bias through nonlinearity.
+- **Not yet supported:** that it is *all* of the WRF residual. Mori–Zwanzig splits the residual
+  into memory plus noise, plus initial-state error, structural error and instrument error.
+  Mesoscale spectra put the intrinsic floor at about 0.5–0.9 m/s rms, against a typical 10-m WRF
+  error of 1.5–2.5 m/s (`team/bio`).
+- **Testable on the user's data:** `mast_wrf/intrinsic_floor.py` measures that floor from the GEP
+  1-min record and splits the WRF MSE into floor and excess. `mast_wrf/rectification_budget.py`
+  predicts the speed bias from the unresolved variance, out of sample. Several masts inside one
+  WRF cell would give the true dual reporter.
+
 ## Is the approach new?
 
 The pieces exist; the combination appears not to (based on a handful of web searches, not a
@@ -234,12 +325,15 @@ parametrisation, and statistical-dynamical downscaling of Weibull parameters.
    "Champ-Ndeba LS 4p" row of `real_wind_fit_ndeba.py`, which is the paper's least-squares fit.
    With n fixed by normalisation, it is the "Champ-Ndeba MLE" row. The same density on log-speed is
    the "Champernowne 3p (classic)" row of `real_wind_fit.py`.
-2. **Spatial dependence.** The mixing test starts from values that are independent between grid
-   points. Real fields are correlated. Correlated mixing needs the cross-cumulants (or a copula for
-   the dependence) carried alongside the marginal parameters.
-3. **Mixing combined with nonlinear physics and gusts.** After a power law or a gust step, the
-   cumulants no longer evolve linearly. The closure then has to re-project at every step.
-4. **Real-data check of the closure.** For example, predict the distribution of the Irish 12-station
-   mean, or of London daily means, from the single-station families plus their correlations.
-5. **Link to WRF.** The parameter fields would replace one deterministic wind field with a
-   distribution at each grid point. The residual between WRF and the masts would set the noise.
+2. **Run the two mast/WRF tests on the GEP data** (`mast_wrf/intrinsic_floor.py`,
+   `mast_wrf/rectification_budget.py`). They settle what share of the WRF error is S−.
+3. **Rice vector family solve.** Carry the resolved vector (from WRF) plus σ²(x, t). σ² should
+   evolve under the squared-weight operator plus a Green–Kubo source, multiplicative in the
+   resolved state (σ² ≈ 1.5 εΔt, `team/quantum`), and with its own scatter (compound σ).
+4. **Saddlepoint quantiles for extremes** (`team/ramanujan/saddlepoint_closure.py`), plus a guard
+   that refuses quantiles beyond the cumulant generating function's singularity s* (`team/astro`).
+5. **Spatial dependence.** Real fields are correlated. Mixing a correlated field needs the joint
+   cumulants Σ P_ij₁⋯P_ijₙ κ(S_j₁, …, S_jₙ), or a copula.
+6. **Fronts and cyclones.** Add the strip-width switch (`sstrip.py`, to be written). Add the Holland
+   vortex mixture fed by `stormtrack.track_at` (centre, motion, Rm, B, centre error).
+7. **exp-Weibull a = N_eff.** Test on masts whether a grows with averaging window × U / L_u.
