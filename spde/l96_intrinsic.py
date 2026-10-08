@@ -15,10 +15,11 @@ from the truth (the role of a met mast). Nothing is tuned.
 Coarse models of X (time step 0.005), all with the same resolved dynamics:
   C0  no sub-grid term                       (deterministic PDE without S-)
   C1  U = E[U | X], a cubic fitted to truth  (best deterministic closure: unbiased pointwise)
-  C2  C1 + Gaussian AR(1), same variance and lag-1 memory as the residual (classic additive)
+  C2  C1 + Gaussian AR(1), same variance and Green-Kubo memory as the residual (classic additive)
   C3  C1 + intrinsic residual: drawn from the measured CONDITIONAL distribution of
       e = U - E[U|X] given X (quantile tables), with its memory carried in rank space
       (Gaussian copula AR(1)), so the law of e at every X is the measured one, non-Gaussian.
+      Memory: AR(1) with the residual's Green-Kubo integral time. C3L: same with the lag-1 fit.
 
 Questions:
   1. Does a coarse model whose sub-grid term is exact in the mean (C1) still drift in climate?
@@ -102,6 +103,18 @@ class Measured:
         lags = np.arange(0, 201, 10)
         self.acf_z = [float(np.mean(z[l:] * z[:z.shape[0] - l]) / np.mean(z * z)) for l in lags]
         self.acf_lags = lags * DT
+        # Green-Kubo memory: integral of the autocorrelation up to its first zero. In the
+        # homogenisation limit the effective diffusion of the resolved variable is
+        # 2 var(e) T_int, so an AR(1) that keeps T_int (not the lag-1 value) has the right one.
+        fine = np.array([1.0] + [float(np.mean(z[l:] * z[:-l]) / np.mean(z * z)) for l in range(1, 101)])
+        first_neg = int(np.argmax(fine <= 0)) if (fine <= 0).any() else fine.size
+        self.T_int_z = float(np.trapezoid(fine[:first_neg], dx=DT))
+        self.rho_z_gk = float(np.exp(-DT / self.T_int_z))
+        fe = np.array([1.0] + [float(np.mean(ec[l:] * ec[:-l]) / np.mean(ec * ec)) for l in range(1, 101)])
+        fn = int(np.argmax(fe <= 0)) if (fe <= 0).any() else fe.size
+        self.T_int_e = float(np.trapezoid(fe[:fn], dx=DT))
+        self.rho_e_gk = float(np.exp(-DT / self.T_int_e))
+        self.acf_fine = fine
 
     def det(self, X):
         return np.polyval(self.poly, X)
@@ -137,10 +150,12 @@ def run_coarse(X0, n_steps, model, meas, record_every=1, z0=None):
         else:
             U = meas.det(X)
             if model == "C2":
-                eps = meas.rho_e * eps + np.sqrt(1 - meas.rho_e ** 2) * meas.sigma_e * rng.standard_normal(X.shape)
+                r = meas.rho_e_gk
+                eps = r * eps + np.sqrt(1 - r ** 2) * meas.sigma_e * rng.standard_normal(X.shape)
                 U = U + eps
-            elif model == "C3":
-                z = meas.rho_z * z + np.sqrt(1 - meas.rho_z ** 2) * rng.standard_normal(X.shape)
+            elif model in ("C3", "C3L"):
+                r = meas.rho_z_gk if model == "C3" else meas.rho_z
+                z = r * z + np.sqrt(1 - r ** 2) * rng.standard_normal(X.shape)
                 U = U + meas.cond_quantile(X, stats.norm.cdf(z))
         k1 = tend_coarse(X, U)
         k2 = tend_coarse(X + 0.5 * DT * k1, U)
@@ -164,9 +179,10 @@ def mse_split(obs, mod):
 
 # ================================================================= run
 if __name__ == "__main__":
-    MODELS = ("C0", "C1", "C2", "C3")
+    MODELS = ("C0", "C1", "C2", "C3", "C3L")
     NAMES = {"C0": "C0 no sub-grid term", "C1": "C1 E[U|X] (deterministic)",
-             "C2": "C2 C1 + Gaussian AR(1)", "C3": "C3 C1 + intrinsic residual"}
+             "C2": "C2 C1 + Gaussian AR(1)", "C3": "C3 C1 + intrinsic residual",
+             "C3L": "C3 with lag-1 memory"}
 
     t0 = time.perf_counter()
     Xtr, Utr = run_truth(n_traj=48, spin_mtu=5, rec_mtu=60)       # training ("mast record")
@@ -187,6 +203,9 @@ if __name__ == "__main__":
     print("rank autocorrelation vs lag (MTU): " + "  ".join(
         f"{l:.2f}:{a:.2f}" for l, a in zip(meas.acf_lags[::4], meas.acf_z[::4])))
     print(f"neighbour (k, k-1) correlation of the residual ranks: {meas.rho_k:+.3f}")
+    print(f"Green-Kubo integral time of the residual rank: {meas.T_int_z:.4f} MTU (of e: {meas.T_int_e:.4f})"
+          f" -> AR(1) per step {meas.rho_z_gk:.4f}, vs lag-1 fit {meas.rho_z:.4f}")
+    print("fine rank ACF (MTU): " + "  ".join(f"{l * DT:.3f}:{meas.acf_fine[l]:+.2f}" for l in (1, 2, 5, 10, 15, 20, 30, 40, 60)))
 
     # ------------------------------------------------ climate
     print("\n=== Climate: 300 coarse runs x 50 MTU from truth states, vs test truth ===")
@@ -235,7 +254,7 @@ if __name__ == "__main__":
     print(f"{n_ic} forecasts, {n_ens} members each for C2/C3")
     res = {}
     for mname in MODELS:
-        ens = n_ens if mname in ("C2", "C3") else 1
+        ens = n_ens if mname in ("C2", "C3", "C3L") else 1
         X0 = np.repeat(ics, ens, axis=0)
         traj = run_coarse(X0, n_lead, mname, meas)
         fc = np.stack([traj[int(round(L / DT))] for L in leads]).reshape(len(leads), n_ic, ens, K)
@@ -259,7 +278,7 @@ if __name__ == "__main__":
     for mname in MODELS:
         print(f"{NAMES[mname]:<30}" + "".join(f"{v:>11.3f}" for v in res[mname]["rmse"]))
     print(f"\n{'spread / error (1 = reliable)':<30}" + "".join(f"{'lead ' + str(L):>11}" for L in leads))
-    for mname in ("C2", "C3"):
+    for mname in ("C2", "C3", "C3L"):
         print(f"{NAMES[mname]:<30}" + "".join(f"{v:>11.2f}" for v in res[mname]["ratio"]))
     print(f"\n{'CRPS (lower = better)':<30}" + "".join(f"{'lead ' + str(L):>11}" for L in leads))
     for mname in MODELS:
