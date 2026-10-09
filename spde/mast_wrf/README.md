@@ -12,6 +12,7 @@ compatible `trapezoid`, the `CUP_EPS` order, and the WRF cell field in the summa
   residual. The residual is split, out of sample, into a systematic part and an unpredictable
   part ε, the candidate unresolved term.
 - `intrinsic_floor.py` (new): model-free split of the WRF error into the intrinsic floor (mast hourly mean vs. its own Taylor cell average over L_eff = 7 dx, including the rectification gap) and the excess (error in the resolved state); also scans MSE against the mast averaging window (T* ~ L_eff / U). Single mast = streamwise only; several masts in one cell give the true dual reporter.
+- `rice_vs_emos.py` (new): the publishability test. Rice-EMOS and Rice-gradient vs. the standard truncated-normal EMOS (Thorarinsdottir & Gneiting 2010), out of sample by month parity; CRPS, PIT, calm-wind and tail scores. See ../PUBLICATION.md.
 - `rectification_budget.py` (new): tests whether the WRF speed bias is produced by the
   unresolved part. Speed is convex in the wind components, so a zero-mean unresolved vector v′
   raises the mean measured speed by about σ²_cross / (2|V|). The script measures v′ at the mast
@@ -28,6 +29,7 @@ Run on the user's machine (data are local):
     python noise_characterisation.py
     python rectification_budget.py            # writes results/rectification/{budget.csv,summary.json}
     python intrinsic_floor.py                 # writes results/intrinsic_floor/{budget_by_speed.csv,...}
+    python rice_vs_emos.py                    # writes results/rice_vs_emos/{scores.csv,summary.json}
 
 Synthetic smoke test (a perfect resolved vector plus sub-hour fluctuations): the bias is 3.3% of
 the MSE for raw WRF. After the out-of-sample rectification it is 0.04%.
